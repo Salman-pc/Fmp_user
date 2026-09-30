@@ -17,7 +17,15 @@ import {
   Repeat
 } from 'lucide-react';
 
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+export const format12Hour = (time24Str) => {
+  if (!time24Str) return '';
+  const [hStr, mStr] = time24Str.split(':');
+  let h = parseInt(hStr, 10);
+  if (isNaN(h)) return time24Str;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${String(h).padStart(2, '0')}:${mStr || '00'} ${ampm}`;
+};
 
 export const UserDashboard = () => {
   const { user } = useAuth();
@@ -272,7 +280,7 @@ export const UserDashboard = () => {
                 <span className="font-semibold text-slate-200">
                   {meeting.isTimeWindowOptional
                     ? 'Open Anytime Today'
-                    : `${meeting.startTime} - ${meeting.endTime} (${meeting.timezone})`}
+                    : `${format12Hour(meeting.startTime)} – ${format12Hour(meeting.endTime)} (${meeting.timezone})`}
                 </span>
               </div>
 

@@ -22,7 +22,11 @@ export const UserLogin = () => {
     handleSubmit,
     formState: { errors }
   } = useForm({
-    resolver: zodResolver(loginSchema)
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: 'user@geocircle.com',
+      password: 'user123'
+    }
   });
 
   const onSubmit = async (data) => {

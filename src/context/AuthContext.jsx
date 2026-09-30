@@ -33,6 +33,12 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await authApi.login(credentials);
       if (res.success && res.data?.user) {
+        if (res.data.accessToken) {
+          localStorage.setItem('accessToken', res.data.accessToken);
+        }
+        if (res.data.refreshToken) {
+          localStorage.setItem('refreshToken', res.data.refreshToken);
+        }
         setUser(res.data.user);
         return res.data;
       }
@@ -47,6 +53,12 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await authApi.register(userData);
       if (res.success && res.data?.user) {
+        if (res.data.accessToken) {
+          localStorage.setItem('accessToken', res.data.accessToken);
+        }
+        if (res.data.refreshToken) {
+          localStorage.setItem('refreshToken', res.data.refreshToken);
+        }
         setUser(res.data.user);
         return res.data;
       }
@@ -62,6 +74,8 @@ export const AuthProvider = ({ children }) => {
     } catch (err) {
       console.error('Logout error:', err);
     } finally {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
       setUser(null);
     }
   };

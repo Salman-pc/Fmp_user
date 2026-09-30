@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { gameApi } from '../api/game.api';
+import { useAuth } from '../hooks/useAuth';
+import { useSocket } from '../hooks/useSocket';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { Modal } from '../components/common/Modal';
 import {
@@ -11,7 +13,10 @@ import {
   Sparkles,
   Dices,
   RefreshCw,
-  CheckCircle2
+  CheckCircle2,
+  Radio,
+  Share2,
+  UserCheck
 } from 'lucide-react';
 
 const TRIVIA_QUESTIONS = [
@@ -45,6 +50,9 @@ const TRIVIA_QUESTIONS = [
 const CARD_SYMBOLS = ['🍎', '🚀', '⚡', '💎', '🍎', '🚀', '⚡', '💎'];
 
 export const GamesHub = () => {
+  const { user } = useAuth();
+  const socket = useSocket('/games');
+
   const [games, setGames] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -55,6 +63,10 @@ export const GamesHub = () => {
   const [gameOver, setGameOver] = useState(false);
   const [submittingScore, setSubmittingScore] = useState(false);
 
+  // Real-time Multiplayer Session State
+  const [roomPlayers, setRoomPlayers] = useState([]);
+  const [multiplayerNotice, setMultiplayerNotice] = useState('');
+
   // Minigame States
   const [targetPos, setTargetPos] = useState({ top: 40, left: 40 });
   const [timeLeft, setTimeLeft] = useState(15);
@@ -63,10 +75,12 @@ export const GamesHub = () => {
   const [triviaIdx, setTriviaIdx] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
 
+  // Memory Match State
   const [cards, setCards] = useState([]);
   const [flipped, setFlipped] = useState([]);
   const [matched, setMatched] = useState([]);
 
+  // Dice Blitz State
   const [diceValues, setDiceValues] = useState([1, 1, 1, 1, 1]);
   const [rollsLeft, setRollsLeft] = useState(3);
 
@@ -94,11 +108,60 @@ export const GamesHub = () => {
     fetchHubData();
   }, []);
 
+  // Socket.IO Real-time Multiplayer Events
+  useEffect(() => {
+    if (!socket || !session?._id) return;
+
+    // Join room lobby
+    socket.emit('join_lobby', { sessionId: session._id, user });
+    setRoomPlayers((prev) => {
+      if (!prev.some((p) => p.email === user.email)) {
+        return [...prev, user];
+      }
+      return prev;
+    });
+
+    // Listen for other players joining
+    const handlePlayerJoined = (data) => {
+      if (data.user && data.user.email !== user?.email) {
+        setMultiplayerNotice(`🎮 ${data.user.name || 'A friend'} joined the game room!`);
+        setRoomPlayers((prev) => {
+          if (!prev.some((p) => p.email === data.user.email)) {
+            return [...prev, data.user];
+          }
+          return prev;
+        });
+      }
+    };
+
+    // Listen for live game actions (e.g. Memory card flip, score sync)
+    const handleGameAction = (data) => {
+      if (data.action === 'MEMORY_FLIP') {
+        const { flipped: remoteFlipped, matched: remoteMatched, scoreToAdd, senderName } = data.payload;
+        setMultiplayerNotice(`🃏 ${senderName || 'Partner'} flipped a card!`);
+        if (remoteFlipped) setFlipped(remoteFlipped);
+        if (remoteMatched) setMatched(remoteMatched);
+        if (scoreToAdd) setGameScore((prev) => prev + scoreToAdd);
+      }
+    };
+
+    socket.on('player_joined', handlePlayerJoined);
+    socket.on('game_action_received', handleGameAction);
+
+    return () => {
+      socket.off('player_joined', handlePlayerJoined);
+      socket.off('game_action_received', handleGameAction);
+      socket.emit('leave_lobby', { sessionId: session._id, user });
+    };
+  }, [socket, session, user]);
+
   const handleStartGame = async (game) => {
     try {
       setPlayingGame(game);
       setGameScore(0);
       setGameOver(false);
+      setMultiplayerNotice('');
+      setRoomPlayers(user ? [user] : []);
 
       const res = await gameApi.joinSession(game._id);
       if (res.success && res.data?.session) {
@@ -126,6 +189,7 @@ export const GamesHub = () => {
     }
   };
 
+  // Target Blitz Timer
   useEffect(() => {
     if (playingGame?.title.includes('Target') && !gameOver) {
       timerRef.current = setInterval(() => {
@@ -172,6 +236,7 @@ export const GamesHub = () => {
     }, 1200);
   };
 
+  // Multiplayer Memory Match Card Flip Handler
   const handleCardClick = (idx) => {
     if (flipped.length === 2 || flipped.includes(idx) || matched.includes(idx)) return;
     const nextFlipped = [...flipped, idx];
@@ -180,10 +245,26 @@ export const GamesHub = () => {
     if (nextFlipped.length === 2) {
       const [first, second] = nextFlipped;
       if (cards[first] === cards[second]) {
-        setMatched((prev) => [...prev, first, second]);
+        const nextMatched = [...matched, first, second];
+        setMatched(nextMatched);
         setGameScore((prev) => prev + 25);
         setFlipped([]);
-        if (matched.length + 2 === cards.length) {
+
+        // Broadcast move to other connected multiplayer members
+        if (socket && session?._id) {
+          socket.emit('send_game_action', {
+            sessionId: session._id,
+            action: 'MEMORY_FLIP',
+            payload: {
+              flipped: [],
+              matched: nextMatched,
+              scoreToAdd: 25,
+              senderName: user?.name
+            }
+          });
+        }
+
+        if (nextMatched.length === cards.length) {
           setGameOver(true);
         }
       } else {
@@ -234,14 +315,16 @@ export const GamesHub = () => {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      <div>
-        <h1 className="text-xl font-bold text-slate-100 flex items-center space-x-2">
-          <Gamepad2 className="w-5 h-5 text-cyan-400" />
-          <span>Friend Group Minigames & Leaderboard</span>
-        </h1>
-        <p className="text-xs text-slate-400 mt-0.5">
-          Play interactive minigames, earn points, and dominate your friend circle leaderboard!
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-slate-100 flex items-center space-x-2">
+            <Gamepad2 className="w-5 h-5 text-cyan-400" />
+            <span>Friend Group Minigames & Multiplayer Hub</span>
+          </h1>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Play multiplayer Memory Match, roll dice, and compete on the live group leaderboard!
+          </p>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -252,7 +335,7 @@ export const GamesHub = () => {
             activeTab === 'GAMES' ? 'border-cyan-400 text-cyan-400 font-bold' : 'border-transparent text-slate-400'
           }`}
         >
-          🎮 Available Minigames ({games.length})
+          🎮 Minigames ({games.length})
         </button>
         <button
           onClick={() => setActiveTab('LEADERBOARD')}
@@ -271,34 +354,46 @@ export const GamesHub = () => {
               No games currently available.
             </div>
           ) : (
-            games.map((game) => (
-              <div key={game._id} className="glass-panel p-5 rounded-2xl border border-slate-800 flex flex-col justify-between space-y-4 hover:border-slate-700 transition">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 flex items-center space-x-1">
-                      <Sparkles className="w-3 h-3" />
-                      <span>{game.type}</span>
-                    </span>
-                    <span className="text-xs text-slate-400 flex items-center space-x-1">
-                      <Users className="w-3.5 h-3.5 text-slate-500" />
-                      <span>Max {game.maxPlayers}</span>
-                    </span>
-                  </div>
-                  <h3 className="font-bold text-white text-sm flex items-center space-x-2">
-                    <span>{game.title}</span>
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-1">{game.description || 'Fun friend circle minigame.'}</p>
-                </div>
+            games.map((game) => {
+              const isMultiplayer = game.type === 'MULTIPLAYER';
+              return (
+                <div key={game._id} className="glass-panel p-5 rounded-2xl border border-slate-800 flex flex-col justify-between space-y-4 hover:border-slate-700 transition relative overflow-hidden">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center space-x-1 border ${
+                        isMultiplayer
+                          ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                          : 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
+                      }`}>
+                        <Sparkles className="w-3 h-3" />
+                        <span>{game.type}</span>
+                      </span>
+                      <span className="text-xs text-slate-400 flex items-center space-x-1 font-semibold">
+                        <Users className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Max {game.maxPlayers} Members</span>
+                      </span>
+                    </div>
 
-                <button
-                  onClick={() => handleStartGame(game)}
-                  className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-xs shadow-lg shadow-cyan-500/20 flex items-center justify-center space-x-1.5 transition"
-                >
-                  <Play className="w-4 h-4 fill-white" />
-                  <span>PLAY NOW</span>
-                </button>
-              </div>
-            ))
+                    <h3 className="font-bold text-white text-sm flex items-center space-x-2">
+                      <span>{game.title}</span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1">{game.description || 'Fun friend circle minigame.'}</p>
+                  </div>
+
+                  <button
+                    onClick={() => handleStartGame(game)}
+                    className={`w-full py-2.5 px-3 rounded-xl font-bold text-xs shadow-lg flex items-center justify-center space-x-1.5 transition ${
+                      isMultiplayer
+                        ? 'bg-gradient-to-r from-amber-500 to-red-600 hover:from-amber-600 hover:to-red-700 text-white shadow-amber-500/20'
+                        : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-cyan-500/20'
+                    }`}
+                  >
+                    <Play className="w-4 h-4 fill-white" />
+                    <span>{isMultiplayer ? 'JOIN MULTIPLAYER ROOM' : 'PLAY NOW'}</span>
+                  </button>
+                </div>
+              );
+            })
           )}
         </div>
       ) : (
@@ -343,13 +438,39 @@ export const GamesHub = () => {
           title={playingGame.title}
         >
           <div className="space-y-4 py-2">
-            <div className="flex items-center justify-between bg-slate-900/80 p-3 rounded-xl border border-slate-800 text-xs">
-              <span className="text-slate-400">Current Score:</span>
-              <span className="text-cyan-400 font-bold font-mono text-base">{gameScore} pts</span>
+            {/* Score & Multiplayer Room Header */}
+            <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400">Current Score:</span>
+                <span className="text-cyan-400 font-bold font-mono text-base">{gameScore} pts</span>
+              </div>
+
+              {playingGame.type === 'MULTIPLAYER' && (
+                <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                  <div className="flex items-center space-x-1.5 text-amber-400 font-semibold">
+                    <Radio className="w-3.5 h-3.5 animate-pulse" />
+                    <span>Live Multiplayer Room</span>
+                  </div>
+
+                  {roomPlayers.length > 0 && (
+                    <div className="flex items-center space-x-1 text-slate-300">
+                      <UserCheck className="w-3 h-3 text-emerald-400" />
+                      <span>{roomPlayers.length} Members Connected</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {multiplayerNotice && (
+                <div className="text-[11px] text-amber-300 bg-amber-500/10 p-2 rounded-lg border border-amber-500/20 font-medium">
+                  {multiplayerNotice}
+                </div>
+              )}
             </div>
 
             {!gameOver ? (
               <>
+                {/* Game 1: Target Blitz */}
                 {playingGame.title.includes('Target') && (
                   <div className="space-y-3">
                     <div className="flex justify-between text-xs text-slate-400 font-semibold">
@@ -369,6 +490,7 @@ export const GamesHub = () => {
                   </div>
                 )}
 
+                {/* Game 2: Trivia Quiz */}
                 {playingGame.title.includes('Trivia') && (
                   <div className="space-y-3">
                     <div className="text-xs text-cyan-400 font-bold">
@@ -399,9 +521,14 @@ export const GamesHub = () => {
                   </div>
                 )}
 
+                {/* Game 3: Memory Match (Multiplayer Supported!) */}
                 {playingGame.title.includes('Memory') && (
                   <div className="space-y-3">
-                    <p className="text-xs text-slate-400 text-center">Flip cards to match all 4 pairs!</p>
+                    <div className="flex items-center justify-between text-xs text-slate-400">
+                      <span>Flip cards to match all 4 pairs!</span>
+                      <span className="text-amber-400 font-bold font-mono">Matched: {matched.length / 2} / 4</span>
+                    </div>
+
                     <div className="grid grid-cols-4 gap-2">
                       {cards.map((sym, cIdx) => {
                         const isFlipped = flipped.includes(cIdx) || matched.includes(cIdx);
@@ -411,7 +538,7 @@ export const GamesHub = () => {
                             onClick={() => handleCardClick(cIdx)}
                             className={`h-16 rounded-xl text-2xl flex items-center justify-center border font-bold transition ${
                               isFlipped
-                                ? 'bg-slate-800 border-cyan-500 text-white'
+                                ? 'bg-slate-800 border-amber-500 text-white shadow-lg shadow-amber-500/20'
                                 : 'bg-slate-900 border-slate-800 text-transparent hover:border-slate-700'
                             }`}
                           >
@@ -423,6 +550,7 @@ export const GamesHub = () => {
                   </div>
                 )}
 
+                {/* Game 5: Dice Roller Blitz */}
                 {playingGame.title.includes('Dice') && (
                   <div className="space-y-4 text-center">
                     <div className="text-xs text-slate-400">Rolls Remaining: <strong className="text-amber-400">{rollsLeft}</strong></div>
@@ -444,6 +572,7 @@ export const GamesHub = () => {
                   </div>
                 )}
 
+                {/* Game 4: Snake */}
                 {playingGame.title.includes('Snake') && (
                   <div className="space-y-3 text-center">
                     <p className="text-xs text-slate-400">Tap directional buttons to navigate & eat targets!</p>
