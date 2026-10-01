@@ -9,8 +9,7 @@ export const Navbar = () => {
   const navLinks = [
     { to: '/user/dashboard', label: 'Check-In', icon: CheckCircle2 },
     { to: '/user/history', label: 'History', icon: History },
-    { to: '/user/profile', label: 'Profile', icon: User },
-    { to: '/user/games', label: 'Games', icon: Gamepad2 }
+    { to: '/user/profile', label: 'Profile', icon: User }
   ];
 
   return (

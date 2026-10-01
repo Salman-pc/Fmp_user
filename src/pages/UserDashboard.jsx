@@ -14,7 +14,9 @@ import {
   AlertCircle,
   CheckCircle,
   RefreshCw,
-  Repeat
+  Repeat,
+  Users,
+  CheckCircle2
 } from 'lucide-react';
 
 export const format12Hour = (time24Str) => {
@@ -37,6 +39,23 @@ export const UserDashboard = () => {
 
   const { location, loading: gpsLoading, error: gpsError, requestPosition } = useGeolocation();
 
+  const [presentUsersData, setPresentUsersData] = useState({ presentUsers: [], presentCount: 0 });
+  const [loadingPresentUsers, setLoadingPresentUsers] = useState(false);
+
+  const fetchPresentUsers = async (meetingId) => {
+    try {
+      setLoadingPresentUsers(true);
+      const res = await checkInApi.getPresentUsers(meetingId);
+      if (res.success && res.data) {
+        setPresentUsersData(res.data);
+      }
+    } catch (err) {
+      console.error('Error fetching present users:', err);
+    } finally {
+      setLoadingPresentUsers(false);
+    }
+  };
+
   const fetchCurrentMeeting = useCallback(async () => {
     try {
       setLoadingMeeting(true);
@@ -44,6 +63,7 @@ export const UserDashboard = () => {
       if (res.success && res.data?.meeting) {
         setMeeting(res.data.meeting);
         fetchCheckInStatus(res.data.meeting._id);
+        fetchPresentUsers(res.data.meeting._id);
       } else {
         setMeeting(null);
       }
@@ -111,6 +131,7 @@ export const UserDashboard = () => {
       });
 
       fetchCheckInStatus(meeting._id);
+      fetchPresentUsers(meeting._id);
     } catch (err) {
       setResultMessage({
         type: 'error',
@@ -371,6 +392,63 @@ export const UserDashboard = () => {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Currently Present Members Today Section */}
+      <div className="mt-6 glass-panel rounded-2xl p-5 sm:p-6 border border-slate-800">
+        <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
+          <div className="flex items-center space-x-2">
+            <Users className="w-5 h-5 text-cyan-400" />
+            <h3 className="text-base font-bold text-slate-100">Currently Present Members Today</h3>
+          </div>
+          <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold text-xs">
+            {presentUsersData.presentCount || 0} Present
+          </span>
+        </div>
+
+        {loadingPresentUsers ? (
+          <div className="py-8 text-center">
+            <LoadingSpinner size="sm" label="Loading present members..." />
+          </div>
+        ) : presentUsersData.presentUsers && presentUsersData.presentUsers.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {presentUsersData.presentUsers.map((item) => (
+              <div
+                key={item._id}
+                className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition flex items-center justify-between"
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="w-9 h-9 rounded-full bg-slate-800 border border-cyan-500/30 overflow-hidden flex items-center justify-center text-cyan-300 font-bold text-xs flex-shrink-0">
+                    {item.user?.avatar ? (
+                      <img src={item.user.avatar} alt={item.user.name} className="w-full h-full object-cover" />
+                    ) : (
+                      item.user?.name?.substring(0, 2).toUpperCase() || 'US'
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-semibold text-slate-200 text-xs truncate flex items-center space-x-1">
+                      <span className="truncate">{item.user?.name || 'Member'}</span>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate">{item.user?.email}</div>
+                  </div>
+                </div>
+
+                <div className="text-right flex-shrink-0 ml-2">
+                  <div className="text-[10px] text-emerald-400 font-semibold font-mono">Verified</div>
+                  <div className="text-[10px] text-slate-400 flex items-center justify-end space-x-0.5 mt-0.5">
+                    <Clock className="w-3 h-3 text-amber-400" />
+                    <span>{new Date(item.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-6 text-center bg-slate-900/40 rounded-xl border border-slate-800/60">
+            <p className="text-xs text-slate-400">No members have checked in for today's meeting yet.</p>
+          </div>
+        )}
       </div>
     </div>
   );
