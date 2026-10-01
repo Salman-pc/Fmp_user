@@ -70,8 +70,8 @@ export const AttendanceHistory = () => {
                         <span>{item.meeting?.locationName}</span>
                       </div>
                     </td>
-                    <td className="py-3 px-4 text-slate-400">
-                      {new Date(item.checkedInAt).toLocaleString()}
+                    <td className="py-3 px-4 text-slate-400 font-mono text-[11px]">
+                      {new Date(item.checkedInAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}, {new Date(item.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
                     </td>
                     <td className="py-3 px-4 font-mono font-medium text-cyan-400">
                       {item.distance}m
