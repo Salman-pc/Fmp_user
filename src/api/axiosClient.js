@@ -1,7 +1,9 @@
 import axios from 'axios';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://fmp-server.onrender.com/api';
+
 const axiosClient = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json'
@@ -64,7 +66,7 @@ axiosClient.interceptors.response.use(
 
       try {
         const res = await axios.post(
-          '/api/auth/refresh',
+          `${API_BASE_URL}/auth/refresh`,
           { refreshToken: storedRefreshToken },
           { withCredentials: true }
         );
