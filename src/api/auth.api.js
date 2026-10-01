@@ -6,6 +6,7 @@ export const authApi = {
   logout: () => axiosClient.post('/auth/logout'),
   refreshToken: (refreshToken) => axiosClient.post('/auth/refresh', { refreshToken }),
   forgotPassword: (email) => axiosClient.post('/auth/forgot-password', { email }),
+  verifyOtp: (email, resetCode) => axiosClient.post('/auth/verify-otp', { email, resetCode }),
   resetPassword: (data) => axiosClient.post('/auth/reset-password', data),
   getMe: () => axiosClient.get('/auth/me')
 };

@@ -18,9 +18,9 @@ export const UserLogin = () => {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Forgot password state
+  // Forgot password state (Step 1: Email OTP request, Step 2: Verify OTP, Step 3: Set New Password)
   const [showForgotModal, setShowForgotModal] = useState(false);
-  const [forgotStep, setForgotStep] = useState(1); // 1: Email input, 2: Reset code & new password
+  const [forgotStep, setForgotStep] = useState(1);
   const [forgotEmail, setForgotEmail] = useState('');
   const [resetCode, setResetCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -61,10 +61,27 @@ export const UserLogin = () => {
       setForgotError(null);
       setForgotMessage(null);
       const res = await authApi.forgotPassword(forgotEmail);
-      setForgotMessage(`Reset code generated! Code: ${res.data?.resetCode || '123456'}`);
+      setForgotMessage(res.data?.message || `OTP sent to your email! (Code: ${res.data?.resetCode || ''})`);
       setForgotStep(2);
     } catch (err) {
       setForgotError(err.message || 'Failed to generate reset code.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    if (!resetCode) return;
+    try {
+      setForgotLoading(true);
+      setForgotError(null);
+      setForgotMessage(null);
+      const res = await authApi.verifyOtp(forgotEmail, resetCode);
+      setForgotMessage(res.message || 'OTP verified successfully! Now enter your new password.');
+      setForgotStep(3);
+    } catch (err) {
+      setForgotError(err.message || 'Invalid or expired OTP. Please try again.');
     } finally {
       setForgotLoading(false);
     }
@@ -85,6 +102,9 @@ export const UserLogin = () => {
       setTimeout(() => {
         setShowForgotModal(false);
         setForgotStep(1);
+        setForgotEmail('');
+        setResetCode('');
+        setNewPassword('');
         setForgotMessage(null);
       }, 2000);
     } catch (err) {
@@ -201,10 +221,10 @@ export const UserLogin = () => {
               </div>
             )}
 
-            {forgotStep === 1 ? (
+            {forgotStep === 1 && (
               <form onSubmit={handleRequestResetCode} className="space-y-4">
                 <p className="text-xs text-slate-400">
-                  Enter your registered email address below to generate a 6-digit password reset code.
+                  Step 1 of 3: Enter your registered email address to receive a 6-digit verification OTP.
                 </p>
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">Email Address</label>
@@ -222,25 +242,57 @@ export const UserLogin = () => {
                   disabled={forgotLoading || !forgotEmail}
                   className="w-full py-2.5 px-4 rounded-xl bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-bold text-sm flex items-center justify-center space-x-2 disabled:opacity-50 transition"
                 >
-                  {forgotLoading ? <span>Generating Code...</span> : <span>Send Reset Code</span>}
+                  {forgotLoading ? <span>Sending OTP...</span> : <span>Send OTP Code</span>}
                 </button>
               </form>
-            ) : (
-              <form onSubmit={handleResetSubmit} className="space-y-4">
+            )}
+
+            {forgotStep === 2 && (
+              <form onSubmit={handleVerifyOtp} className="space-y-4">
                 <p className="text-xs text-slate-400">
-                  Enter the 6-digit reset code and your new password.
+                  Step 2 of 3: Enter the 6-digit OTP code sent to <strong className="text-cyan-400">{forgotEmail}</strong>.
                 </p>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">6-Digit Reset Code</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">6-Digit OTP Code</label>
                   <input
                     type="text"
                     required
+                    maxLength={6}
                     value={resetCode}
                     onChange={(e) => setResetCode(e.target.value)}
                     placeholder="123456"
-                    className="w-full px-3.5 py-2.5 rounded-xl glass-input text-sm font-mono tracking-widest text-center"
+                    className="w-full px-3.5 py-2.5 rounded-xl glass-input text-sm font-mono tracking-widest text-center text-amber-400 text-base font-bold"
                   />
                 </div>
+                <div className="flex items-center space-x-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotStep(1);
+                      setForgotError(null);
+                      setForgotMessage(null);
+                    }}
+                    className="py-2.5 px-3 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700 flex items-center space-x-1"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Back</span>
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={forgotLoading || !resetCode}
+                    className="flex-1 py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm flex items-center justify-center space-x-2 disabled:opacity-50 transition"
+                  >
+                    {forgotLoading ? <span>Verifying OTP...</span> : <span>Verify OTP Code</span>}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {forgotStep === 3 && (
+              <form onSubmit={handleResetSubmit} className="space-y-4">
+                <p className="text-xs text-slate-400">
+                  Step 3 of 3: OTP Verified! Set your new account password below.
+                </p>
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">New Password</label>
                   <input
@@ -253,10 +305,14 @@ export const UserLogin = () => {
                     className="w-full px-3.5 py-2.5 rounded-xl glass-input text-sm"
                   />
                 </div>
-                <div className="flex items-center space-x-3 pt-2">
+                <div className="flex items-center space-x-3 pt-1">
                   <button
                     type="button"
-                    onClick={() => setForgotStep(1)}
+                    onClick={() => {
+                      setForgotStep(2);
+                      setForgotError(null);
+                      setForgotMessage(null);
+                    }}
                     className="py-2.5 px-3 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700 flex items-center space-x-1"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
@@ -264,10 +320,10 @@ export const UserLogin = () => {
                   </button>
                   <button
                     type="submit"
-                    disabled={forgotLoading || !resetCode || !newPassword}
+                    disabled={forgotLoading || !newPassword}
                     className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-sm flex items-center justify-center space-x-2 disabled:opacity-50 transition"
                   >
-                    {forgotLoading ? <span>Resetting...</span> : <span>Update Password</span>}
+                    {forgotLoading ? <span>Updating...</span> : <span>Update Password</span>}
                   </button>
                 </div>
               </form>
