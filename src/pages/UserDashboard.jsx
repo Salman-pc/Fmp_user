@@ -41,6 +41,14 @@ export const UserDashboard = () => {
 
   const [presentUsersData, setPresentUsersData] = useState({ presentUsers: [], presentCount: 0 });
   const [loadingPresentUsers, setLoadingPresentUsers] = useState(false);
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const fetchPresentUsers = async (meetingId) => {
     try {
@@ -189,8 +197,8 @@ export const UserDashboard = () => {
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
-      {/* Header Banner */}
-      <div className="glass-panel rounded-2xl p-6 relative overflow-hidden border border-slate-800">
+      {/* Header Banner & Live Real-Time Clock Widget */}
+      <div className="glass-panel rounded-2xl p-6 relative overflow-hidden border border-slate-800 space-y-4">
         <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
         
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -215,6 +223,30 @@ export const UserDashboard = () => {
               <Repeat className="w-3 h-3" />
               <span>{scheduleText}</span>
             </span>
+          </div>
+        </div>
+
+        {/* Live Real-Time Digital Clock Bar */}
+        <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex items-center justify-center">
+              <Clock className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <div className="text-[10px] text-slate-400 uppercase font-semibold tracking-wider">Live System Time</div>
+              <div className="text-sm font-extrabold font-mono text-cyan-300">
+                {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+              </div>
+            </div>
+          </div>
+
+          <div className="text-right">
+            <div className="text-[11px] font-semibold text-slate-300">
+              {currentTime.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
+            </div>
+            <div className="text-[10px] text-slate-400">
+              Timezone: <span className="text-amber-400 font-medium">{meeting.timezone || 'Asia/Kolkata (IST)'}</span>
+            </div>
           </div>
         </div>
       </div>
