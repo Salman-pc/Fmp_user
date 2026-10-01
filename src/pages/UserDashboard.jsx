@@ -97,6 +97,15 @@ export const UserDashboard = () => {
     fetchCurrentMeeting();
   }, [fetchCurrentMeeting]);
 
+  // Auto-poll present users list every 10 seconds for real-time presence updates
+  useEffect(() => {
+    if (!meeting?._id) return;
+    const interval = setInterval(() => {
+      fetchPresentUsers(meeting._id);
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [meeting?._id]);
+
   useEffect(() => {
     requestPosition();
   }, []);
@@ -470,7 +479,7 @@ export const UserDashboard = () => {
                   <div className="text-[10px] text-emerald-400 font-semibold font-mono">Verified</div>
                   <div className="text-[10px] text-slate-400 flex items-center justify-end space-x-0.5 mt-0.5">
                     <Clock className="w-3 h-3 text-amber-400" />
-                    <span>{new Date(item.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span>{new Date(item.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}</span>
                   </div>
                 </div>
               </div>
