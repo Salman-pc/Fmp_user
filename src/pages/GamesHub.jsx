@@ -63,9 +63,12 @@ export const GamesHub = () => {
   const [gameOver, setGameOver] = useState(false);
   const [submittingScore, setSubmittingScore] = useState(false);
 
-  // Real-time Multiplayer Session State
+  // Real-time Multiplayer Session & Room Code State
   const [roomPlayers, setRoomPlayers] = useState([]);
   const [multiplayerNotice, setMultiplayerNotice] = useState('');
+  const [activeRoomCode, setActiveRoomCode] = useState('');
+  const [inputRoomCode, setInputRoomCode] = useState('');
+  const [roomError, setRoomError] = useState('');
 
   // Minigame States
   const [targetPos, setTargetPos] = useState({ top: 40, left: 40 });
@@ -110,28 +113,22 @@ export const GamesHub = () => {
 
   // Socket.IO Real-time Multiplayer Events
   useEffect(() => {
-    if (!socket || !session?._id) return;
+    if (!socket) return;
 
-    // Join room lobby
-    socket.emit('join_lobby', { sessionId: session._id, user });
-    setRoomPlayers((prev) => {
-      if (!prev.some((p) => p.email === user.email)) {
-        return [...prev, user];
-      }
-      return prev;
-    });
+    const handleRoomCreated = ({ roomCode, roomData }) => {
+      setActiveRoomCode(roomCode);
+      setMultiplayerNotice(`🎉 Room created! Share Code: ${roomCode}`);
+      setRoomPlayers(roomData.players.map((p) => p.user));
+    };
 
-    // Listen for other players joining
-    const handlePlayerJoined = (data) => {
-      if (data.user && data.user.email !== user?.email) {
-        setMultiplayerNotice(`🎮 ${data.user.name || 'A friend'} joined the game room!`);
-        setRoomPlayers((prev) => {
-          if (!prev.some((p) => p.email === data.user.email)) {
-            return [...prev, data.user];
-          }
-          return prev;
-        });
-      }
+    const handleRoomJoined = ({ roomCode, roomData, newUser }) => {
+      setActiveRoomCode(roomCode);
+      setRoomPlayers(roomData.players.map((p) => p.user));
+      setMultiplayerNotice(`🎮 ${newUser?.name || 'A friend'} joined Room ${roomCode}!`);
+    };
+
+    const handleRoomError = ({ message }) => {
+      setRoomError(message);
     };
 
     // Listen for live game actions (e.g. Memory card flip, score sync)
@@ -145,15 +142,57 @@ export const GamesHub = () => {
       }
     };
 
-    socket.on('player_joined', handlePlayerJoined);
+    socket.on('room_created', handleRoomCreated);
+    socket.on('room_joined', handleRoomJoined);
+    socket.on('room_error', handleRoomError);
     socket.on('game_action_received', handleGameAction);
 
     return () => {
-      socket.off('player_joined', handlePlayerJoined);
+      socket.off('room_created', handleRoomCreated);
+      socket.off('room_joined', handleRoomJoined);
+      socket.off('room_error', handleRoomError);
       socket.off('game_action_received', handleGameAction);
-      socket.emit('leave_lobby', { sessionId: session._id, user });
     };
-  }, [socket, session, user]);
+  }, [socket]);
+
+  const handleCreateRoom = (game) => {
+    setPlayingGame(game);
+    setGameScore(0);
+    setGameOver(false);
+    setMultiplayerNotice('');
+    setRoomError('');
+    setActiveRoomCode('');
+
+    const shuffled = [...CARD_SYMBOLS].sort(() => Math.random() - 0.5);
+    setCards(shuffled);
+    setFlipped([]);
+    setMatched([]);
+
+    if (socket) {
+      socket.emit('create_room', { gameTitle: game.title, user });
+    }
+  };
+
+  const handleJoinWithCode = (e) => {
+    e.preventDefault();
+    if (!inputRoomCode.trim()) return;
+
+    const game = games.find((g) => g.type === 'MULTIPLAYER') || games[0];
+    setPlayingGame(game);
+    setGameScore(0);
+    setGameOver(false);
+    setMultiplayerNotice('');
+    setRoomError('');
+
+    const shuffled = [...CARD_SYMBOLS].sort(() => Math.random() - 0.5);
+    setCards(shuffled);
+    setFlipped([]);
+    setMatched([]);
+
+    if (socket) {
+      socket.emit('join_room_code', { roomCode: inputRoomCode.trim(), user });
+    }
+  };
 
   const handleStartGame = async (game) => {
     try {
@@ -161,6 +200,8 @@ export const GamesHub = () => {
       setGameScore(0);
       setGameOver(false);
       setMultiplayerNotice('');
+      setRoomError('');
+      setActiveRoomCode('');
       setRoomPlayers(user ? [user] : []);
 
       const res = await gameApi.joinSession(game._id);
@@ -348,7 +389,48 @@ export const GamesHub = () => {
       </div>
 
       {activeTab === 'GAMES' ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="space-y-6">
+          {/* Room Code Multiplayer Section */}
+          <div className="glass-panel rounded-2xl p-5 border border-amber-500/20 bg-gradient-to-r from-amber-500/5 via-slate-900 to-slate-900 space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-bold text-amber-400 flex items-center space-x-2">
+                  <Radio className="w-4 h-4 text-amber-400 animate-pulse" />
+                  <span>Real-Time Private Room Code Multiplayer</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Create a private room to get a 6-digit room code, or join a friend's room code!
+                </p>
+              </div>
+
+              {/* Join with Room Code Form */}
+              <form onSubmit={handleJoinWithCode} className="flex items-center space-x-2">
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={inputRoomCode}
+                  onChange={(e) => setInputRoomCode(e.target.value)}
+                  placeholder="Enter 6-Digit Code"
+                  className="px-3 py-2 rounded-xl glass-input text-xs font-mono uppercase tracking-wider text-center w-40"
+                />
+                <button
+                  type="submit"
+                  disabled={!inputRoomCode.trim()}
+                  className="py-2 px-3.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 disabled:opacity-50 transition"
+                >
+                  Join Room
+                </button>
+              </form>
+            </div>
+
+            {roomError && (
+              <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
+                ⚠️ {roomError}
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {games.length === 0 ? (
             <div className="col-span-full p-8 text-center text-xs text-slate-400 glass-panel rounded-2xl">
               No games currently available.
@@ -380,21 +462,37 @@ export const GamesHub = () => {
                     <p className="text-xs text-slate-400 mt-1">{game.description || 'Fun friend circle minigame.'}</p>
                   </div>
 
-                  <button
-                    onClick={() => handleStartGame(game)}
-                    className={`w-full py-2.5 px-3 rounded-xl font-bold text-xs shadow-lg flex items-center justify-center space-x-1.5 transition ${
-                      isMultiplayer
-                        ? 'bg-gradient-to-r from-amber-500 to-red-600 hover:from-amber-600 hover:to-red-700 text-white shadow-amber-500/20'
-                        : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-cyan-500/20'
-                    }`}
-                  >
-                    <Play className="w-4 h-4 fill-white" />
-                    <span>{isMultiplayer ? 'JOIN MULTIPLAYER ROOM' : 'PLAY NOW'}</span>
-                  </button>
+                  {isMultiplayer ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => handleCreateRoom(game)}
+                        className="py-2.5 px-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold text-xs hover:bg-amber-500/30 transition flex items-center justify-center space-x-1"
+                      >
+                        <Radio className="w-3.5 h-3.5 text-amber-400" />
+                        <span>CREATE ROOM</span>
+                      </button>
+                      <button
+                        onClick={() => handleStartGame(game)}
+                        className="py-2.5 px-2 rounded-xl bg-gradient-to-r from-amber-500 to-red-600 text-white font-bold text-xs hover:from-amber-600 hover:to-red-700 transition flex items-center justify-center space-x-1"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-white" />
+                        <span>QUICK PLAY</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleStartGame(game)}
+                      className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-xs shadow-lg shadow-cyan-500/20 flex items-center justify-center space-x-1.5 transition"
+                    >
+                      <Play className="w-4 h-4 fill-white" />
+                      <span>PLAY NOW</span>
+                    </button>
+                  )}
                 </div>
               );
             })
           )}
+          </div>
         </div>
       ) : (
         /* Leaderboard Table */
@@ -449,7 +547,12 @@ export const GamesHub = () => {
                 <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-[11px]">
                   <div className="flex items-center space-x-1.5 text-amber-400 font-semibold">
                     <Radio className="w-3.5 h-3.5 animate-pulse" />
-                    <span>Live Multiplayer Room</span>
+                    <span>Live Room</span>
+                    {activeRoomCode && (
+                      <span className="ml-1 bg-amber-500/20 text-amber-300 font-mono px-2 py-0.5 rounded border border-amber-500/40 text-xs font-bold">
+                        CODE: {activeRoomCode}
+                      </span>
+                    )}
                   </div>
 
                   {roomPlayers.length > 0 && (
