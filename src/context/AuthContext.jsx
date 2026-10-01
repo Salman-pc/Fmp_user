@@ -4,21 +4,38 @@ import { authApi } from '../api/auth.api';
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    try {
+      const savedUser = localStorage.getItem('user');
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch (e) {
+      return null;
+    }
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const fetchCurrentUser = useCallback(async () => {
+    const token = localStorage.getItem('accessToken');
+    if (!token) {
+      setUser(null);
+      localStorage.removeItem('user');
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       const res = await authApi.getMe();
       if (res.success && res.data?.user) {
         setUser(res.data.user);
+        localStorage.setItem('user', JSON.stringify(res.data.user));
       } else {
         setUser(null);
+        localStorage.removeItem('user');
       }
     } catch (err) {
       setUser(null);
+      localStorage.removeItem('user');
     } finally {
       setLoading(false);
     }
@@ -40,6 +57,7 @@ export const AuthProvider = ({ children }) => {
           localStorage.setItem('refreshToken', res.data.refreshToken);
         }
         setUser(res.data.user);
+        localStorage.setItem('user', JSON.stringify(res.data.user));
         return res.data;
       }
     } catch (err) {
@@ -60,6 +78,7 @@ export const AuthProvider = ({ children }) => {
           localStorage.setItem('refreshToken', res.data.refreshToken);
         }
         setUser(res.data.user);
+        localStorage.setItem('user', JSON.stringify(res.data.user));
         return res.data;
       }
     } catch (err) {
@@ -76,6 +95,7 @@ export const AuthProvider = ({ children }) => {
     } finally {
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
+      localStorage.removeItem('user');
       setUser(null);
     }
   };

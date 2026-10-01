@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
-import { MapPin, LogOut, CheckCircle2, History, User, Gamepad2 } from 'lucide-react';
+import { Modal } from './Modal';
+import { MapPin, LogOut, CheckCircle2, History, User, Gamepad2, AlertTriangle } from 'lucide-react';
 import { Link, NavLink } from 'react-router-dom';
 
 export const Navbar = () => {
   const { user, logout } = useAuth();
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   const navLinks = [
     { to: '/user/dashboard', label: 'Check-In', icon: CheckCircle2 },
@@ -12,6 +14,11 @@ export const Navbar = () => {
     { to: '/user/profile', label: 'Profile', icon: User },
     { to: '/user/games', label: 'Games', icon: Gamepad2 }
   ];
+
+  const handleConfirmLogout = () => {
+    setShowLogoutModal(false);
+    logout();
+  };
 
   return (
     <>
@@ -71,7 +78,7 @@ export const Navbar = () => {
               </div>
 
               <button
-                onClick={logout}
+                onClick={() => setShowLogoutModal(true)}
                 title="Logout"
                 className="p-1.5 sm:p-2 rounded-xl border border-slate-800 bg-slate-900/40 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/20 transition"
               >
@@ -108,6 +115,37 @@ export const Navbar = () => {
           </nav>
         </div>
       )}
+
+      {/* Logout Confirmation Modal */}
+      <Modal
+        isOpen={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        title="Confirm Logout"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center space-x-3 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs">
+            <AlertTriangle className="w-5 h-5 text-rose-400 flex-shrink-0" />
+            <span>Are you sure you want to log out of your GeoCircle member account?</span>
+          </div>
+
+          <div className="flex items-center justify-end space-x-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setShowLogoutModal(false)}
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmLogout}
+              className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-600/25 transition"
+            >
+              Yes, Log Out
+            </button>
+          </div>
+        </div>
+      </Modal>
     </>
   );
 };
